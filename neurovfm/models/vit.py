@@ -19,24 +19,46 @@ from torchvision.ops import StochasticDepth
 from torch.utils.checkpoint import checkpoint
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
-from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_func, flash_attn_varlen_kvpacked_func
-from flash_attn.layers.patch_embed import PatchEmbed
+# --- VORES LOKALE FLASH_ATTN HACK ---
+try:
+    from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_func, flash_attn_varlen_kvpacked_func
+    from flash_attn.layers.patch_embed import PatchEmbed
+except ImportError:
+    pass
 
 try:
     from flash_attn.ops.triton.layer_norm import layer_norm_fn, RMSNorm
 except ImportError:
-    layer_norm_fn, RMSNorm = None, None
+    class RMSNorm: pass
+    import torch.nn.functional as F
+    
+    # Vores egen standard PyTorch version af layer_norm_fn!
+    def layer_norm_fn(x, weight, bias, residual=None, eps=1e-6, prenorm=False, **kwargs):
+        if residual is not None:
+            x = x + residual
+        out = F.layer_norm(x, (x.shape[-1],), weight=weight, bias=bias, eps=eps)
+        return out, (x if prenorm else None)
 
 try:
     from flash_attn.ops.fused_dense import ColumnParallelLinear, FusedDense, RowParallelLinear
 except ImportError:
-    FusedDense, ColumnParallelLinear, RowParallelLinear = None, None, None
+    import torch.nn as nn
+    FusedDense = nn.Linear
+    ColumnParallelLinear, RowParallelLinear = None, None
 
-from flash_attn.modules.mlp import FusedMLP
 try:
-    from flash_attn.ops.triton.layer_norm import layer_norm_fn
+    from flash_attn.modules.mlp import FusedMLP
 except ImportError:
-    layer_norm_fn = None
+    import torch.nn as nn
+    class FusedMLP(nn.Module):
+        def __init__(self, in_features, hidden_features, **kwargs):
+            super().__init__()
+            self.fc1 = nn.Linear(in_features, hidden_features)
+            self.act = nn.GELU()
+            self.fc2 = nn.Linear(hidden_features, in_features)
+        def forward(self, x):
+            return self.fc2(self.act(self.fc1(x)))
+# ------------------------------------
 
 MLP_CHECKPOINT_LVL = 2
 
@@ -102,7 +124,7 @@ class SelfAttention(nn.Module):
 
         self.attn_drop = attn_drop
 
-    def forward(self, x, cu_seqlens=None, max_seqlen=None, use_flash_attn=True, return_attn_weights=False):
+    def forward(self, x, cu_seqlens=None, max_seqlen=None, use_flash_attn=False, return_attn_weights=False):
         """
         Forward pass for SelfAttention.
 
@@ -302,7 +324,7 @@ class Block(nn.Module):
                 cu_seqlens=None,
                 max_seqlen=None,
                 residual=None,
-                use_flash_attn=True,
+                use_flash_attn=False,
                 return_attn_weights=False):
 
         if self.drop_path1.p == 0 or not self.training:
@@ -451,7 +473,7 @@ class TransformerEncoder(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x, cu_seqlens=None, max_seqlen=None, use_flash_attn=True, return_attn_weights=False):
+    def forward(self, x, cu_seqlens=None, max_seqlen=None, use_flash_attn=False, return_attn_weights=False):
         hidden_states = x
         if self.cls_token is not None:
             raise NotImplementedError("Prefix tokens not supported yet")

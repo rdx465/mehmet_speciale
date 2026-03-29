@@ -15,3 +15,8 @@ slurm*.out
 .ipynb_checkpoints
 lightning_logs/
 *bak
+
+# Feature files og resultater (store binære filer)
+extracted_features/
+results/attention_weights/
+*.nii

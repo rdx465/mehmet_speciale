@@ -14,7 +14,7 @@ from torch.nn.modules.utils import _pair
 try:
     from flash_attn.ops.fused_dense import FusedDense
 except ImportError:
-    FusedDense = None
+    FusedDense = nn.Linear  # Vores hack: Vi bruger standard PyTorch i stedet!
 
 
 class PatchEmbed(nn.Module):
@@ -72,8 +72,8 @@ class PatchEmbed(nn.Module):
         self.patch_hw_size = patch_hw_size
         self.patch_d_size = patch_d_size
 
-        if fused_bias_fc and FusedDense is None:
-            raise ImportError("fused_dense is not installed")
+        #if fused_bias_fc and FusedDense is None:
+        #    raise ImportError("fused_dense is not installed")
 
         linear_cls = nn.Linear if not fused_bias_fc or not bias else FusedDense
         self.proj = linear_cls(
