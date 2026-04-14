@@ -131,15 +131,65 @@ def load_ngc_labels(csv_path):
     return records, stats
 
 
-def get_aligned_arrays(csv_path):
+def load_split_labels(csv_path):
     """
-    Convenience wrapper returning parallel numpy arrays for use in probe scripts.
+    Read an already-filtered split CSV (dev_labels.csv or test_labels.csv).
+
+    These files have 4 columns: record_id, nii_path, icp, label
+    — produced by create_data_splits.py.  No filtering is applied here
+    because the split was derived from an already-filtered dataset.
 
     Returns:
         record_ids : np.ndarray of str, shape [N]
         nii_paths  : np.ndarray of str, shape [N]
         labels     : np.ndarray of int, shape [N]  (1 = elevated ICP)
     """
+    csv_path = Path(csv_path)
+    records = []
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            records.append({
+                "record_id": row["record_id"],
+                "nii_path":  row["nii_path"],
+                "icp":       float(row["icp"]),
+                "label":     int(row["label"]),
+            })
+
+    n_pos = sum(r["label"] for r in records)
+    n_neg = len(records) - n_pos
+    print(f"\nLoaded split CSV: {csv_path.name}")
+    print(f"  => {len(records)} patients  "
+          f"({n_pos} elevated ICP > {ICP_THRESHOLD} mmHg, {n_neg} normal)")
+
+    record_ids = np.array([r["record_id"] for r in records], dtype=object)
+    nii_paths  = np.array([r["nii_path"]  for r in records], dtype=object)
+    labels     = np.array([r["label"]     for r in records], dtype=np.int64)
+
+    return record_ids, nii_paths, labels
+
+
+def get_aligned_arrays(csv_path):
+    """
+    Load labels from either the original icp_path_pair.csv (applies all
+    filters) or an already-filtered split CSV (dev_labels / test_labels).
+
+    Auto-detects format by checking for the 'nii_path' column header.
+
+    Returns:
+        record_ids : np.ndarray of str, shape [N]
+        nii_paths  : np.ndarray of str, shape [N]
+        labels     : np.ndarray of int, shape [N]  (1 = elevated ICP)
+    """
+    # Peek at the header to decide which reader to use
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        header = next(csv.reader(fh))
+
+    if "nii_path" in header:
+        # Already-filtered split CSV — read directly
+        return load_split_labels(csv_path)
+
+    # Original icp_path_pair.csv — apply full filter pipeline
     records, stats = load_ngc_labels(csv_path)
 
     print("\nLabel loading — filter statistics:")
