@@ -1,0 +1,91 @@
+{
+  "model": "Linear SVM (LinearSVC, decision_function scores for AUC)",
+  "pooling": "mean",
+  "n_patients": 75,
+  "n_positive": 36,
+  "n_negative": 39,
+  "cv_folds": 5,
+  "cv_results": [
+    {
+      "fold": 1,
+      "C": 0.1,
+      "auc": 0.8750000000000001,
+      "accuracy": 0.6666666666666666,
+      "sensitivity": 0.5,
+      "specificity": 0.8571428571428571,
+      "f1": 0.6153846153846154,
+      "tp": 4,
+      "tn": 6,
+      "fp": 1,
+      "fn": 4
+    },
+    {
+      "fold": 2,
+      "C": 0.001,
+      "auc": 0.9107142857142857,
+      "accuracy": 0.9333333333333333,
+      "sensitivity": 1.0,
+      "specificity": 0.875,
+      "f1": 0.9333333333333333,
+      "tp": 7,
+      "tn": 7,
+      "fp": 1,
+      "fn": 0
+    },
+    {
+      "fold": 3,
+      "C": 0.0001,
+      "auc": 0.8392857142857143,
+      "accuracy": 0.8,
+      "sensitivity": 0.8571428571428571,
+      "specificity": 0.75,
+      "f1": 0.8,
+      "tp": 6,
+      "tn": 6,
+      "fp": 2,
+      "fn": 1
+    },
+    {
+      "fold": 4,
+      "C": 0.01,
+      "auc": 0.8571428571428571,
+      "accuracy": 0.8666666666666667,
+      "sensitivity": 0.8571428571428571,
+      "specificity": 0.875,
+      "f1": 0.8571428571428571,
+      "tp": 6,
+      "tn": 7,
+      "fp": 1,
+      "fn": 1
+    },
+    {
+      "fold": 5,
+      "C": 0.0001,
+      "auc": 0.7857142857142857,
+      "accuracy": 0.8,
+      "sensitivity": 0.8571428571428571,
+      "specificity": 0.75,
+      "f1": 0.8,
+      "tp": 6,
+      "tn": 6,
+      "fp": 2,
+      "fn": 1
+    }
+  ],
+  "summary": {
+    "auc_mean": 0.8535714285714286,
+    "auc_std": 0.041342274652822246,
+    "accuracy_mean": 0.8133333333333335,
+    "accuracy_std": 0.08844332774281068,
+    "sensitivity_mean": 0.8142857142857143,
+    "sensitivity_std": 0.16659862556700855,
+    "specificity_mean": 0.8214285714285715,
+    "specificity_std": 0.05868455973269636,
+    "f1_mean": 0.8011721611721612,
+    "f1_std": 0.10499433730239505
+  },
+  "loo_cv": {
+    "auc": 0.8668091168091168,
+    "accuracy": 0.8133333333333334
+  }
+}
