@@ -17,7 +17,8 @@ _BASE = "/projects/users/people/mehuns_r/projects/neurovfm_private"
 
 # Dataset
 NGC_DATA_ROOT    = "/projects/users/data/UCPH/ICP/organized_data"
-DEFAULT_CSV_PATH = f"{NGC_DATA_ROOT}/tables/icp_path_pair.csv"
+DEFAULT_CSV_PATH = f"{NGC_DATA_ROOT}/tables/icp_path_pair.csv"   # full dataset (feature extraction)
+DEFAULT_DEV_CSV_PATH = f"{_BASE}/dev_labels.csv"                 # dev split only (ML training/CV)
 
 # Model: weights are unpacked directly into hf_cache/
 # (config.json and pytorch_model.bin sit at this path — no HF_HOME needed)
@@ -28,12 +29,14 @@ DEFAULT_FEATURES_DIR = f"{_BASE}/extracted_features"
 DEFAULT_RESULTS_DIR  = f"{_BASE}/results"
 
 
-def get_ngc_parser(description=""):
+def get_ngc_parser(description="", csv_default=None):
+    if csv_default is None:
+        csv_default = DEFAULT_CSV_PATH
     parser = argparse.ArgumentParser(description=description)
 
     parser.add_argument(
-        "--csv-path", type=str, default=DEFAULT_CSV_PATH,
-        help="Path to icp_path_pair.csv"
+        "--csv-path", type=str, default=csv_default,
+        help="Path to labels CSV (icp_path_pair.csv or dev_labels.csv)"
     )
     parser.add_argument(
         "--model-path", type=str, default=DEFAULT_MODEL_PATH,

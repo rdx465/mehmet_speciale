@@ -26,7 +26,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix, roc_curve
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config_ngc import get_ngc_parser, SEED, NUM_CV_FOLDS
+from config_ngc import get_ngc_parser, SEED, NUM_CV_FOLDS, DEFAULT_DEV_CSV_PATH
 from label_utils_ngc import get_aligned_arrays
 
 
@@ -183,7 +183,8 @@ def plot_roc(fold_results, results_dir):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = get_ngc_parser("Gated-Attention MIL for ICP detection — DASGIB")
+    parser = get_ngc_parser("Gated-Attention MIL for ICP detection — DASGIB",
+                            csv_default=DEFAULT_DEV_CSV_PATH)
     parser.add_argument("--epochs",       type=int,   default=40)
     parser.add_argument("--lr",           type=float, default=3e-4)
     parser.add_argument("--hidden-dim",   type=int,   default=128)

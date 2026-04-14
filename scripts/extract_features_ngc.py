@@ -8,7 +8,7 @@ and saves embeddings as .pt files named by record_id.
 Key differences from extract_features.py (PhysioNet version):
   - Patient IDs are strings (e.g. "1-154"), not zero-padded integers
   - NIfTI paths come directly from the CSV (no glob needed)
-  - HF_HOME points to an offline model cache on the NGC filesystem
+  - Model weights loaded directly from --model-path (no HF_HOME needed)
 
 Usage (interactive / login node test):
     python extract_features_ngc.py --single 1-154
@@ -16,11 +16,9 @@ Usage (interactive / login node test):
 Usage (PBS job):
     python extract_features_ngc.py
 
-Environment variables (set in PBS script or shell):
-    HF_HOME=/projects/users/mehmet/hf_cache   (offline model weights)
+Model weights are loaded directly from --model-path (no HF_HOME needed).
 """
 
-import os
 import sys
 import time
 import torch
@@ -47,11 +45,6 @@ def main():
         help="Process only this record_id (e.g. '1-154') — for testing"
     )
     args = parser.parse_args()
-
-    # --- Set HF_HOME so HuggingFace uses the offline cache ---
-    if args.hf_home:
-        os.environ["HF_HOME"] = args.hf_home
-        print(f"HF_HOME set to: {args.hf_home}")
 
     device = resolve_device(args.device)
     features_dir = Path(args.features_dir)

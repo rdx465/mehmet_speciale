@@ -24,7 +24,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config_ngc import get_ngc_parser, SEED, NUM_CV_FOLDS
+from config_ngc import get_ngc_parser, SEED, NUM_CV_FOLDS, DEFAULT_DEV_CSV_PATH
 from label_utils_ngc import get_aligned_arrays
 
 
@@ -215,7 +215,8 @@ def plot_confusion_matrix(y_true, y_pred, results_dir):
 
 
 def main():
-    parser = get_ngc_parser("Linear Probe (Logistic Regression) for ICP — DASGIB")
+    parser = get_ngc_parser("Linear Probe (Logistic Regression) for ICP — DASGIB",
+                            csv_default=DEFAULT_DEV_CSV_PATH)
     parser.add_argument("--pooling", type=str, default="mean",
                         choices=["mean", "max", "mean_max"])
     args = parser.parse_args()
