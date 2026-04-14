@@ -1,14 +1,12 @@
 """
-Linear SVM Probe for ICP detection on the DASGIB/NGC dataset.
+Linear SVM Probe for ICP detection — DASGIB/NGC dataset.
 
 Uses LinearSVC — a true linear probe (hinge loss, no sigmoid).
 AUC is computed from decision_function scores (signed distance to hyperplane).
 
-Identical CV methodology to linear_svm_probe.py (PhysioNet) so results
-are directly comparable to the Martin Zillmer baseline (~0.58 AUC).
-
-Key difference: patient IDs are strings (e.g. '1-154'), feature files
-are named {record_id}.pt accordingly.
+Stratified 5-fold CV with nested C-tuning.
+Reports mean ± std and 95% CI for AUC, Sensitivity, Specificity.
+Results are directly comparable to Martin Zillmer's baseline (~0.58 AUC).
 """
 
 import sys
@@ -16,6 +14,7 @@ import json
 import numpy as np
 import torch
 from pathlib import Path
+from scipy import stats
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
@@ -32,17 +31,20 @@ from config_ngc import get_ngc_parser, SEED, NUM_CV_FOLDS
 from label_utils_ngc import get_aligned_arrays
 
 
-def load_features(features_dir, record_ids, pooling="mean"):
-    """
-    Load .pt feature files for each record_id and pool into one vector.
+def ci95(values):
+    """95% CI using t-distribution (appropriate for small n like 5 folds)."""
+    n = len(values)
+    mean = np.mean(values)
+    se = stats.sem(values)
+    t_crit = stats.t.ppf(0.975, df=n - 1)
+    margin = t_crit * se
+    return mean, float(margin)
 
-    Returns:
-        X          : np.ndarray [N, D]
-        valid_mask : boolean np.ndarray [N]
-    """
+
+def load_features(features_dir, record_ids, pooling="mean"):
+    """Load .pt feature files and pool into one vector per patient."""
     features_dir = Path(features_dir)
-    X = []
-    valid_mask = []
+    X, valid_mask = [], []
 
     for rid in record_ids:
         pt_path = features_dir / f"{rid}.pt"
@@ -76,7 +78,6 @@ def run_cv(X, y, n_splits=NUM_CV_FOLDS, C_values=None):
         C_values = [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED)
-
     fold_metrics = []
     all_y_true, all_y_score, all_y_pred = [], [], []
     fold_roc_data = []
@@ -92,7 +93,6 @@ def run_cv(X, y, n_splits=NUM_CV_FOLDS, C_values=None):
         # Inner CV: select best C
         inner_skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=SEED)
         best_C, best_inner_auc = C_values[0], -1
-
         for C in C_values:
             inner_aucs = []
             for inner_train, inner_val in inner_skf.split(X_train, y_train):
@@ -103,16 +103,15 @@ def run_cv(X, y, n_splits=NUM_CV_FOLDS, C_values=None):
                     inner_aucs.append(roc_auc_score(y_train[inner_val], scores))
                 except ValueError:
                     inner_aucs.append(0.5)
-            mean_auc = np.mean(inner_aucs)
-            if mean_auc > best_inner_auc:
-                best_inner_auc = mean_auc
+            if np.mean(inner_aucs) > best_inner_auc:
+                best_inner_auc = np.mean(inner_aucs)
                 best_C = C
 
         clf = LinearSVC(C=best_C, max_iter=10000, random_state=SEED)
         clf.fit(X_train, y_train)
 
         y_pred  = clf.predict(X_test)
-        y_score = clf.decision_function(X_test)  # raw linear scores, no sigmoid
+        y_score = clf.decision_function(X_test)  # raw scores, no sigmoid
 
         try:
             auc = roc_auc_score(y_test, y_score)
@@ -130,22 +129,26 @@ def run_cv(X, y, n_splits=NUM_CV_FOLDS, C_values=None):
             "sensitivity": sens, "specificity": spec, "f1": f1,
             "tp": int(tp), "tn": int(tn), "fp": int(fp), "fn": int(fn),
         })
-
         all_y_true.extend(y_test.tolist())
         all_y_score.extend(y_score.tolist())
         all_y_pred.extend(y_pred.tolist())
-
         fpr, tpr, _ = roc_curve(y_test, y_score)
         fold_roc_data.append((fpr, tpr, auc))
 
         print(f"  Fold {fold_idx+1}: AUC={auc:.3f}  Acc={acc:.3f}  "
               f"Sens={sens:.3f}  Spec={spec:.3f}  C={best_C}")
 
+    # Summary with mean, std and 95% CI
     summary = {}
     for m in ["auc", "accuracy", "sensitivity", "specificity", "f1"]:
         vals = [f[m] for f in fold_metrics]
-        summary[f"{m}_mean"] = float(np.mean(vals))
-        summary[f"{m}_std"]  = float(np.std(vals))
+        mean, margin = ci95(vals)
+        summary[m] = {
+            "mean":    float(mean),
+            "std":     float(np.std(vals)),
+            "ci95_lo": float(mean - margin),
+            "ci95_hi": float(mean + margin),
+        }
 
     return {
         "folds": fold_metrics, "summary": summary,
@@ -160,11 +163,11 @@ def plot_roc(roc_data, results_dir):
     fig, ax = plt.subplots(figsize=(8, 6))
     mean_fpr = np.linspace(0, 1, 100)
     tprs = []
-
     for fpr, tpr, auc in roc_data:
         ax.plot(fpr, tpr, alpha=0.3, lw=1)
-        tprs.append(np.interp(mean_fpr, fpr, tpr))
-        tprs[-1][0] = 0.0
+        interp = np.interp(mean_fpr, fpr, tpr)
+        interp[0] = 0.0
+        tprs.append(interp)
 
     mean_tpr = np.mean(tprs, axis=0)
     mean_tpr[-1] = 1.0
@@ -181,7 +184,7 @@ def plot_roc(roc_data, results_dir):
     ax.plot([0, 1], [0, 1], "k--", lw=1, label="Chance")
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.set_title("ROC — NeuroVFM Linear SVM Probe for ICP Detection (DASGIB)")
+    ax.set_title("ROC — Linear SVM Probe — DASGIB ICP")
     ax.legend(loc="lower right")
     ax.set_xlim([-0.02, 1.02])
     ax.set_ylim([-0.02, 1.02])
@@ -196,19 +199,16 @@ def plot_confusion_matrix(y_true, y_pred, results_dir):
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     fig, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    ax.set_title("Confusion Matrix — Linear SVM (aggregated across folds)")
+    ax.set_title("Confusion Matrix — Linear SVM (aggregated)")
     fig.colorbar(im)
-    classes = ["Normal ICP", "Elevated ICP"]
-    ax.set_xticks([0, 1]); ax.set_xticklabels(classes)
-    ax.set_yticks([0, 1]); ax.set_yticklabels(classes)
     for i in range(2):
         for j in range(2):
             ax.text(j, i, str(cm[i, j]), ha="center", va="center",
                     color="white" if cm[i, j] > cm.max() / 2 else "black",
                     fontsize=16)
-    ax.set_ylabel("True label")
-    ax.set_xlabel("Predicted label")
-
+    ax.set_xticks([0, 1]); ax.set_xticklabels(["Normal ICP", "Elevated ICP"])
+    ax.set_yticks([0, 1]); ax.set_yticklabels(["Normal ICP", "Elevated ICP"])
+    ax.set_ylabel("True label"); ax.set_xlabel("Predicted label")
     out_path = Path(results_dir) / "svm_confusion_matrix.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -218,8 +218,7 @@ def plot_confusion_matrix(y_true, y_pred, results_dir):
 def main():
     parser = get_ngc_parser("Linear SVM Probe for ICP detection — DASGIB")
     parser.add_argument("--pooling", type=str, default="mean",
-                        choices=["mean", "max", "mean_max"],
-                        help="Feature aggregation strategy")
+                        choices=["mean", "max", "mean_max"])
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
@@ -232,21 +231,24 @@ def main():
     record_ids = record_ids[valid_mask]
     labels     = labels[valid_mask]
     print(f"Loaded {len(X)} feature vectors, shape: {X.shape}")
-    print(f"Elevated ICP (label=1): {labels.sum()}  Normal (label=0): {(labels==0).sum()}")
+    print(f"Elevated ICP (label=1): {labels.sum()}  "
+          f"Normal (label=0): {(labels == 0).sum()}")
 
-    print(f"\n{'='*55}")
-    print(f"Stratified {NUM_CV_FOLDS}-Fold CV  —  Linear SVM  (pooling={args.pooling})")
+    print(f"\n{'='*60}")
+    print(f"Stratified {NUM_CV_FOLDS}-Fold CV — Linear SVM "
+          f"(pooling={args.pooling})")
     print(f"AUC via decision_function scores (no sigmoid)")
-    print(f"{'='*55}")
+    print(f"{'='*60}")
     results = run_cv(X, labels)
 
-    print(f"\nSummary (compare to Martin baseline ~0.58 AUC):")
-    for metric in ["auc", "accuracy", "sensitivity", "specificity", "f1"]:
-        mean = results["summary"][f"{metric}_mean"]
-        std  = results["summary"][f"{metric}_std"]
-        print(f"  {metric:>12s}: {mean:.3f} ± {std:.3f}")
+    print(f"\nSummary (Martin Zillmer baseline: AUC ~0.58):")
+    print(f"  {'Metric':>12s}   {'Mean':>6s} ± {'Std':>6s}   95% CI")
+    print(f"  {'-'*50}")
+    for m in ["auc", "accuracy", "sensitivity", "specificity", "f1"]:
+        s = results["summary"][m]
+        print(f"  {m:>12s}   {s['mean']:.3f} ± {s['std']:.3f}   "
+              f"[{s['ci95_lo']:.3f} – {s['ci95_hi']:.3f}]")
 
-    print(f"\nGenerating plots...")
     plot_roc(results["roc_data"], results_dir)
     plot_confusion_matrix(results["all_y_true"], results["all_y_pred"], results_dir)
 
@@ -254,15 +256,14 @@ def main():
         "model": "Linear SVM (LinearSVC, decision_function scores for AUC)",
         "dataset": "DASGIB",
         "pooling": args.pooling,
+        "icp_threshold_mmhg": 15,
         "n_patients": int(len(labels)),
         "n_elevated": int(labels.sum()),
         "n_normal": int((labels == 0).sum()),
-        "icp_threshold_mmhg": 15,
         "cv_folds": NUM_CV_FOLDS,
-        "cv_results": results["folds"],
+        "per_fold": results["folds"],
         "summary": results["summary"],
     }
-
     metrics_path = results_dir / "svm_metrics_summary.json"
     with open(metrics_path, "w") as f:
         json.dump(output, f, indent=2)
