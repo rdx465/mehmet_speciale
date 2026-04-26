@@ -86,7 +86,6 @@ def main():
     print(f"\nFilter pipeline:")
     print(f"  Total CSV rows         : {stats['total_rows']}")
     print(f"  After icp==0 removed   : {stats['after_icp0_removed']}")
-    print(f"  After axial filter     : {stats['after_axial_filter']}")
     print(f"  After temporal filter  : {stats['after_temporal_filter']}")
     print(f"  After quality filter   : {stats['after_quality_filter']}")
     print(f"  After deduplication    : {stats['after_dedup']}")

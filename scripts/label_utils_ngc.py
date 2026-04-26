@@ -2,14 +2,13 @@
 Label utilities for the DASGIB/NGC dataset.
 
 Reads icp_path_pair.csv and applies the following filters before
-deriving binary ICP labels:
+deriving binary ICP labels (matching Martin Zillmer's inclusion criteria):
 
   1. Remove rows with icp == 0.0  (invalid/missing measurement)
-  2. Keep only axial scans        (nii_file contains 'ax' or 'tra')
-  3. Temporal filter              abs(days_from_ct) <= 1
-  4. Quality filter               all ScanDimensions >= 50 pixels
-  5. ICP threshold                icp > 15 mmHg  → label 1, else 0
-  6. Deduplication                keep first axial scan per record_id
+  2. Temporal filter              abs(days_from_ct) <= 1
+  3. Quality filter               all ScanDimensions >= 50 pixels
+  4. ICP threshold                icp > 15 mmHg  → label 1, else 0
+  5. Deduplication                keep first scan per record_id
 
 Returns a 1:1 mapping: record_id (str) → (nii_file path, label)
 """
@@ -71,11 +70,7 @@ def load_ngc_labels(csv_path):
     rows = [r for r in rows if float(r["icp"]) != 0.0]
     stats["after_icp0_removed"] = len(rows)
 
-    # --- 2. Keep only axial scans ---
-    rows = [r for r in rows if _is_axial(r["nii_file"])]
-    stats["after_axial_filter"] = len(rows)
-
-    # --- 3. Temporal filter: abs(days_from_ct) <= 1 ---
+    # --- 2. Temporal filter: abs(days_from_ct) <= 1 ---
     def _within_window(r):
         try:
             return abs(float(r["days_from_ct"])) <= MAX_DAYS_FROM_CT
@@ -85,7 +80,7 @@ def load_ngc_labels(csv_path):
     rows = [r for r in rows if _within_window(r)]
     stats["after_temporal_filter"] = len(rows)
 
-    # --- 4. Quality filter: all ScanDimensions >= MIN_SCAN_DIM ---
+    # --- 3. Quality filter: all ScanDimensions >= MIN_SCAN_DIM ---
     def _quality_ok(r):
         dims = _parse_scan_dimensions(r.get("ScanDimensions", ""))
         if dims is None:
@@ -95,7 +90,7 @@ def load_ngc_labels(csv_path):
     rows = [r for r in rows if _quality_ok(r)]
     stats["after_quality_filter"] = len(rows)
 
-    # --- 5. Deduplicate: keep first axial scan per record_id ---
+    # --- 4. Deduplicate: keep first scan per record_id ---
     # CSV is assumed to be ordered; first occurrence = first scan in time.
     seen = set()
     unique_rows = []
@@ -195,7 +190,6 @@ def get_aligned_arrays(csv_path):
     print("\nLabel loading — filter statistics:")
     print(f"  Total CSV rows        : {stats['total_rows']}")
     print(f"  After icp==0 removed  : {stats['after_icp0_removed']}")
-    print(f"  After axial filter    : {stats['after_axial_filter']}")
     print(f"  After temporal filter : {stats['after_temporal_filter']}")
     print(f"  After quality filter  : {stats['after_quality_filter']}")
     print(f"  After deduplication   : {stats['after_dedup']}")
