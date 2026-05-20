@@ -76,9 +76,7 @@ def main():
     # --- Load NeuroVFM encoder ---
     print("\nLoading NeuroVFM encoder...")
     from neurovfm.pipelines import load_encoder
-    encoder, preprocessor = load_encoder(args.model_path)
-    encoder = encoder.to(device)
-    encoder.eval()
+    encoder, preprocessor = load_encoder(args.model_path, device=device)
     print("Encoder loaded.\n")
 
     processed = 0
